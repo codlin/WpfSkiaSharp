@@ -1,13 +1,18 @@
-﻿using SkiaSharp;
+using Microsoft.SqlServer.Server;
+using SkiaSharp;
 using SkiaSharp.Views.Desktop;
 using SkiaSharp.Views.WPF;
 using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Shapes;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace WpfSkiaSharp
 {
@@ -157,22 +162,74 @@ namespace WpfSkiaSharp
 
                 canvas.DrawBitmap(_bitmap, 0, 0);
             }
-
             Console.WriteLine($"2 SaveCount:{canvas.SaveCount}");
 
-            // 画直线
-            canvas.DrawLine(_startPoint, _endPoint, new SKPaint() { Color = SKColors.Red, StrokeWidth = 2 });
+            string text = "[1] 1986.8602 μm";
+            SKFontStyleWeight weight = SKFontStyleWeight.Normal;
+            SKFontStyleSlant slant = SKFontStyleSlant.Italic;
+
+            // 创建文本样式
+            SKFontStyle fontStyle = new SKFontStyle(weight, SKFontStyleWidth.Normal, slant);
+
+            // 创建文本字体
+            SKTypeface typeface = SKTypeface.FromFamilyName("Times New Roman", fontStyle);
+
+            // 创建文本字体样式
+            SKFont font = new SKFont(typeface, 12);
+            SKTextBlob textBlob = SKTextBlob.Create(text, font);
+
+            MeasureText(text, font, out var textWidth, out var textHeight, out var metrics);
+
+            float x = _endPoint.X;
+            float y = _endPoint.Y;
+            float right = x + textWidth + 4;
+            float bottom = y + textHeight + 2;
+            var rect = new SKRect(x, y, right, bottom);
+            var path = new SKPath();
+            path.AddRect(rect);
+
+            // 创建文本样式
+            SKPaint paint = new SKPaint
+            {
+                Color = SKColors.Aqua,
+                IsAntialias = true, // 抗锯齿
+                TextAlign = SKTextAlign.Center, // 文本对齐方式
+                Style = SKPaintStyle.StrokeAndFill,
+            };
+
+            canvas.DrawPath(path, paint);
+
+            // 创建文本块
+            paint.Color = SKColors.Red;
+            paint.TextAlign = SKTextAlign.Left;
+            //paint.TextSkewX = -0.25f;
+            var textX = rect.Left + 2;
+            var textY = rect.Top + textHeight - metrics.Bottom + 2;
+            //canvas.DrawText(text, textX, textY, paint);
+            canvas.DrawText(textBlob, textX, textY, paint);
+
+            // 增加下划线
+            path = new SKPath();
+            path.MoveTo(textX, textY);
+            path.LineTo(textX + textWidth, textY);
+            paint.Style = SKPaintStyle.Stroke;
+            canvas.DrawPath(path, paint);
+
+            // 增加删除线
+            path.MoveTo(textX, rect.Top + textHeight / 2 + 1);
+            path.LineTo(textX + textWidth, rect.Top + textHeight / 2 + 1);
+            canvas.DrawPath(path, paint);
         }
 
         void SkiaCanvas3_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            _startPoint = e.GetPosition(skiaCanvas3).ToSKPoint();
+            _startPoint = e.GetDpiPosition(sender as IInputElement).ToSKPoint();
         }
 
         private void skiaCanvas3_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
         {
             // 更新鼠标位置
-            mousePosition = e.GetPosition(skiaCanvas3).ToSKPoint();
+            mousePosition = e.GetDpiPosition(sender as IInputElement).ToSKPoint();
 
             // 转换为 SKPoint
             _endPoint = mousePosition;
@@ -189,12 +246,50 @@ namespace WpfSkiaSharp
         private void SkiaCanvas3_MouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
         {
             // 获取鼠标点击的位置
-            mousePosition = e.GetPosition(skiaCanvas3).ToSKPoint();
+            mousePosition = e.GetDpiPosition(skiaCanvas3).ToSKPoint();
 
             float delta = e.Delta > 0 ? 0.1f : -0.1f; // 缩放步长
             scaleFactor += delta;
 
             skiaCanvas3.InvalidateVisual();
+        }
+
+        void MeasureText(string text, SKFont font, out float width, out float height, out SKFontMetrics metrics)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                width = 0;
+                height = 0;
+                metrics = default;
+                return;
+            }
+
+            var mainWindow = System.Windows.Application.Current.MainWindow;
+            var dpiScale = VisualTreeHelper.GetDpi(mainWindow);
+            Console.WriteLine($"dpiScale: {dpiScale.DpiScaleX}, {dpiScale.DpiScaleY}");
+
+            var paint = new SKPaint
+            {
+                Typeface = font.Typeface,
+                TextSize = font.Size,
+                IsAntialias = true,
+            };
+
+            // 获取字体的度量单位
+            paint.GetFontMetrics(out metrics);
+            Console.WriteLine("Ascent: " + metrics.Ascent);
+            Console.WriteLine("Descent: " + metrics.Descent);
+            Console.WriteLine("Leading: " + metrics.Leading);
+            Console.WriteLine("Top: " + metrics.Top);
+            Console.WriteLine("Bottom: " + metrics.Bottom);
+            Console.WriteLine("X-height: " + metrics.XHeight);
+            Console.WriteLine("CapHeight: " + metrics.CapHeight);
+
+            var bounds = new SKRect();
+            float textWidth = paint.MeasureText(text, ref bounds);
+            Console.WriteLine($"Text bounds: {bounds}, width: {textWidth}");
+            width = bounds.Width;
+            height = bounds.Height;
         }
     }
 }
